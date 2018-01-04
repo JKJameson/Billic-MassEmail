@@ -8,6 +8,35 @@ class MassEmail {
 		'admin_menu_icon' => '<i class="icon-email-envelope"></i>',
 		'description' => 'Send a mass email to your users.',
 	);
+	function user_area() {
+		global $billic, $db;
+		if ($_GET['Unsubscribe']=='Y') {
+			$billic->set_title('Unsubscribe');
+			echo '<h1>Unsubscribe</h1><p>We\'re sorry to see you go.</p>';
+			$email = base64_decode(urldecode($_GET['E']));
+			$hash = urldecode($_GET['H']);
+			$listid = $_GET['L'];
+			//emailoptout
+			if (md5(get_config('billic_push_key') . $email) != $hash) {
+				err('Invalid link (something has corrupted it)');
+			}
+			if (isset($_POST['unsubscribe'])) {
+				if ($_POST['unsub_future_lists'] == 1) $db->q('UPDATE `users` SET `emailoptout` = 1 WHERE `email` = ?', $email);
+				if ($_POST['unsub_all_lists'] == 1) $db->q('UPDATE `massemail_emails` SET `unsubscribed` = 1 WHERE `email` = ?', $email);
+				elseif ($_POST['unsub_this_list'] == 1) $db->q('UPDATE `massemail_emails` SET `unsubscribed` = 1 WHERE `email` = ? AND `listid` = ?', $email, $listid);
+				echo '<div class="alert alert-success" role="alert">You have been unsubscribed.</div>';
+				exit;
+			}
+			echo '<form method="POST">';
+			if (!empty($listid)) {
+				echo '<input type="checkbox" name="unsub_this_list" value="1" checked> Unsubscribe from this mailing list<br><br>';
+			}
+			echo '<input type="checkbox" name="unsub_all_lists" value="1" onClick="return confirm(\'Warning: You may not receive service-related emails!\');"> Unsubscribe from <b>ALL</b> mailing lists<br><br>';
+			echo '<input type="checkbox" name="unsub_future_lists" value="1" onClick="return confirm(\'Warning: You will not receive any new mailing lists we may create!\');"> Unsubscribe from all <b>future</b> mailing lists<br><br>';
+			echo '<input type="submit" class="btn btn-success" name="unsubscribe" value="Save Settings &raquo;">';
+			echo '</form>';	
+		}
+	}
 	function admin_area() {
 		global $billic, $db;
 		ini_set('memory_limit', '100M');
@@ -316,7 +345,7 @@ CODE;
 					$body = $_POST['body'];
 					$body = str_replace('%firstname%', $firstname, $body);
 					$body = str_replace('%name%', $name, $body);
-					$body = str_replace('%unsublink%', 'http'.(get_config('billic_ssl')==1?'s':'').'://'.get_config('billic_domain').'/Unsubscribe/Y/E/'.urlencode(base64_encode($email['email'])).'/H/'.urlencode(md5(get_config('billic_push_key').$email['email'])).'/L/'.$list['id'].'/', $body);
+					$body = str_replace('%unsublink%', 'http'.(get_config('billic_ssl')==1?'s':'').'://'.get_config('billic_domain').'/User/MassEmail/Unsubscribe/Y/E/'.urlencode(base64_encode($email['email'])).'/H/'.urlencode(md5(get_config('billic_push_key').$email['email'])).'/L/'.$list['id'].'/', $body);
 
 					//$billic->email($email['email'], $subject, $body);					
 					$previews .= '<div class="tab-pane'.($iframe==0?' active':'').'" id="preview'.$iframe.'">Preview of email to be sent to '.$name.'. ('.$email['email'].')<br><b>'.htmlentities($subject).'</b><br><iframe id="massemail_iframe'.$iframe.'" style="width:320px;height:480px;resize: both;overflow: auto;" scrolling="auto" frameborder="1"></iframe><script>addLoadEvent(function() { $("#massemail_iframe'.$iframe.'").contents().find("html").html(Base64.decode(\''.base64_encode($body).'\')); });</script></div>';
@@ -415,7 +444,7 @@ Thank you,<br>
 					$body = str_replace('%firstname%', $firstname, $body);
 					$body = str_replace('%name%', $name, $body);
 					// TODO: Improve unsubscribe to include mailing lists
-					$body = str_replace('%unsublink%', 'http'.(get_config('billic_ssl')==1?'s':'').'://'.get_config('billic_domain').'/Unsubscribe/Y/E/'.urlencode(base64_encode($email['email'])).'/H/'.urlencode(md5(get_config('billic_push_key').$email['email'])).'/L/'.$list['id'].'/', $body);
+					$body = str_replace('%unsublink%', 'http'.(get_config('billic_ssl')==1?'s':'').'://'.get_config('billic_domain').'/User/MassEmail/Unsubscribe/Y/E/'.urlencode(base64_encode($email['email'])).'/H/'.urlencode(md5(get_config('billic_push_key').$email['email'])).'/L/'.$list['id'].'/', $body);
 
 					$billic->email($email['email'], $subject, $body);
 					$sent['lastemailid'] = $email['id'];
