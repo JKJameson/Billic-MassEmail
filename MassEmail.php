@@ -146,7 +146,6 @@ CODE;
 			$total = $total[0]['COUNT(*)'];
 			$pagination = $billic->pagination(array(
 				'total' => $total,
-				'list_manager' => $billic->module['ListManager'],
 			));
 			echo $pagination['menu'];
 			$lists = $db->q('SELECT * FROM `massemail_lists` ORDER BY `id` DESC LIMIT ' . $pagination['start'] . ',' . $pagination['limit']);
@@ -208,7 +207,6 @@ CODE;
 			$total = $total[0]['COUNT(*)'];
 			$pagination = $billic->pagination(array(
 				'total' => $total,
-				'list_manager' => $billic->module['ListManager'],
 			));
 			echo $pagination['menu'];
 			$emails = $db->q('SELECT * FROM `massemail_emails` WHERE `listid` = ? ORDER BY `email` ASC LIMIT ' . $pagination['start'] . ',' . $pagination['limit'], $list['id']);
@@ -242,7 +240,6 @@ CODE;
 			$total = $total[0]['COUNT(*)'];
 			$pagination = $billic->pagination(array(
 				'total' => $total,
-				'list_manager' => $billic->module['ListManager'],
 			));
 			echo $pagination['menu'];
 			$sents = $db->q('SELECT * FROM `massemail_sent` ORDER BY `id` DESC LIMIT ' . $pagination['start'] . ',' . $pagination['limit']);
