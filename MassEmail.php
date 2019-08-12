@@ -42,7 +42,7 @@ class MassEmail {
 		if ($_GET['Action'] == 'Bounce') {
 			echo '<h1><i class="icon-email-envelope"></i> Mass Email &raquo; Bounce Handler</h1>';
 			$error_rep = error_reporting(E_ALL ^ E_NOTICE);
-			$imap = imap_open("{shareddb-l.hosting.stackcp.net:993/imap/ssl/novalidate-cert}INBOX", "bounce@servebyte.com", "@nMW[xdLXf,C");
+			$imap = imap_open("{slocalhost:993/imap/ssl/novalidate-cert}INBOX", "xxxxxxxxxxxx", "xxxxxxxxxxxxx");
 			$emails = [];
 			if ($imap) {
 				//Check no.of.msgs
