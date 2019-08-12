@@ -41,20 +41,91 @@ class MassEmail {
 		ini_set('memory_limit', '100M');
 		if ($_GET['Action'] == 'Bounce') {
 			echo '<h1><i class="icon-email-envelope"></i> Mass Email &raquo; Bounce Handler</h1>';
-			$error_rep = error_reporting(E_ALL);
-			$imap = imap_open("{localhost:993/imap/ssl/novalidate-cert}INBOX", "bounce@servebyte.com", "@nMW[xdLXf,C");
+			$error_rep = error_reporting(E_ALL ^ E_NOTICE);
+			$imap = imap_open("{shareddb-l.hosting.stackcp.net:993/imap/ssl/novalidate-cert}INBOX", "bounce@servebyte.com", "@nMW[xdLXf,C");
+			$emails = [];
 			if ($imap) {
 				//Check no.of.msgs
 				$num = imap_num_msg($imap);
 				//if there is a message in your inbox
-				if ($num > 0) {
-					//read that mail recently arrived
-					echo imap_qprint(imap_fetchbody($imap, $num, 0));
+				for ($i=0;$i<$num;$i++) {
+					
+					
+					if ($i>1000) break;
+					
+					$body = imap_qprint(imap_fetchbody($imap, $i+1, ''));
+					$headerEnd = strpos($body, "\r\n\r\n");
+					$headers = substr($body, 0, $headerEnd);
+					$body = substr($body, $headerEnd);
+					
+					preg_match('/X\-Failed\-Recipients: (.*?)\r\n/m', $headers, $email);
+					$email = trim(@$email[1], '<>');
+					if (empty($email)) {
+						preg_match('/^To: (.*?)@(.*?)\.(.*?)\r\n/m', $body, $emails);
+						$email = substr($emails[0], 4);
+						if (empty($email)) {
+							preg_match('/[\._a-zA-Z0-9-]+@[\._a-zA-Z0-9-]+/i', $body, $email);
+							$email = $email[0];
+							if (empty($email)) {
+								//echo '<pre>'.$body.'</pre><br>'; exit;
+								imap_delete($imap, $i+1);
+								continue;
+							}
+						}
+					}
+					
+					$try = [
+						'~5[0-9][0-9]( |\-)(.*)~',
+						'~5\.[0-9]\.[0-9]~'
+					];
+					foreach($try as $regex) {
+						preg_match($regex, $body, $match);
+						$match = $match[0];
+						if (!empty($match)) {
+							break;	
+						}
+					}
+					
+					
+					/*$matchThese = [
+						'550 5.1.1',
+						'550 User not found',
+						'550 5.7.1',
+						'mailbox unavailable',
+						'550 User unknown',
+						'no mailbox here by that name',
+						'550 Invalid recipient',
+						'550 No Such User Here',
+						'550 Account discontinued',
+						'550 5.2.1 The email account that you tried to reach is disabled',
+						'550 Mailbox not found',
+						
+					];*/
+					
+					if (!empty($match)) {
+						$emails[] = $email;
+						$db->insert('massemail_bounces', [
+							'email' => $email,
+							'message'  => $match,
+							'created' => time(),
+						]);
+						imap_delete($imap, $i+1);
+					} else {
+						echo '<pre>'.strip_tags($body).'</pre><br>';
+						imap_delete($imap, $i+1);
+					}
+		
+					
 				}
-				//close the stream
+				imap_expunge($imap);
 				imap_close($imap);
 			}
 			error_reporting($error_rep);
+			echo '<form method="POST"><textarea name="emails404" class="form-control" style="height:500px">';
+			foreach($emails as $email) {
+				echo htmlentities($email).PHP_EOL;	
+			}
+			echo '</textarea></form>';
 			return;
 		}
 		if ($_GET['Action'] == 'CreateList') {
@@ -77,6 +148,8 @@ class MassEmail {
 							$users[] = $user['id'];
 						}
 					}
+					if (isset($_POST['users_terminated_services']) && isset($_POST['users_active_services']))
+						fatal_error('Can not select both active and terminated services at the same time');
 					if (isset($_POST['users_terminated_services'])) {
 						foreach ($users as $k => $userid) {
 							$hasTerminated = false;
@@ -90,6 +163,23 @@ class MassEmail {
 								}
 							}
 							if (!($hasActive === false && $hasTerminated === true)) {
+								unset($users[$k]);
+							}
+						}
+					}
+					if (isset($_POST['users_active_services'])) {
+						foreach ($users as $k => $userid) {
+							$hasTerminated = false;
+							$hasActive = false;
+							$services = $db->q('SELECT `domainstatus` FROM `services` WHERE `userid` = ?', $userid);
+							foreach ($services as $service) {
+								if ($service['domainstatus'] == 'Active') {
+									$hasActive = true;
+								} elseif ($service['domainstatus'] == 'Terminated') {
+									$hasTerminated = true;
+								}
+							}
+							if ($hasActive === false) {
 								unset($users[$k]);
 							}
 						}
@@ -126,6 +216,7 @@ class MassEmail {
 		<tr><td>Service Module:</td><td><select name="servicemodule" class="form-control">$servicemodules</select></td></tr>
 		<tr><td colspan="2"><input type="checkbox" name="create_empty_list" value="1"> Create an empty list. (Ignores all other options.)</td></tr>
 		<tr><td colspan="2"><input type="checkbox" name="users_terminated_services" value="1"> Match only users with terminated services.</td></tr>
+		<tr><td colspan="2"><input type="checkbox" name="users_active_services" value="1"> Match only users with active services.</td></tr>
 		<tr><td colspan="2"><input type="checkbox" name="preserve_unsubscription" value="1" checked onClick="return confirm('Warning: Do not spam people!')"> Do not add users to this list which have previously unsubscribed.</td></tr>
 		<tr><td colspan="2"><input type="checkbox" name="ignore_blocked_orders" value="1" checked> Do not add users who have orders blocked.</td></tr>
 	</table>
@@ -189,8 +280,35 @@ CODE;
 				echo '<p>Put each email address on a new line followed by an optional name. For example;<br>email1@example.org John Doe<br>email2@example.org John Smith<br>email3@example.org Joe Smith</p><form method="POST"><textarea class="form-control" name="emails" rows="12" style="width: 100%">' . safe($_POST['body']) . '</textarea><br><div align="center"><input type="submit" name="addemails" value="Add Emails &raquo;" class="btn btn-success"></div></form>';
 				return;
 			}
+			if ($_GET['Do'] == 'DownloadCSV') {
+				$billic->disable_content();
+				function csvsafe($text) {
+					return str_replace(',', '-', $text);
+				}
+				$emails = $db->q('SELECT * FROM `massemail_emails` WHERE `listid` = ? AND `unsubscribed` = 0 ORDER BY `email`', $list['id']);
+				foreach ($emails as $email) {
+					if ($email['lastsent'] === null) {
+						$email['lastsent'] = 'Never';
+					}
+					$name = explode(' ', $email['name']);
+					$firstname = $name[0];
+					unset($name[0]);
+					$lastname = implode(' ', $name);
+					echo csvsafe($firstname).','.csvsafe($lastname).','.csvsafe($email['email'])."\r\n";
+				}
+				$output = ob_get_contents();
+				ob_end_clean();
+				header('Content-Disposition: attachment; filename=exported-emails-' . time() . '.csv');
+				header('Content-Type: application/force-download');
+				header('Content-Type: application/octet-stream');
+				header('Content-Type: application/download');
+				header('Content-Length: ' . strlen($output));
+				echo $output;
+				exit;
+			}
 			echo '<h1><i class="icon-email-envelope"></i> <a href="/Admin/MassEmail/">Mass Email</a> &raquo; <a href="/Admin/MassEmail/Action/ManageLists/">Manage List</a> &raquo; ' . safe($list['desc']) . '</h1>';
 			echo '<a href="/Admin/MassEmail/Action/ManageList/ID/' . $list['id'] . '/Do/AddEmails/" class="btn btn-success">Add Emails</a> ';
+			echo '<a href="/Admin/MassEmail/Action/ManageList/ID/' . $list['id'] . '/Do/DownloadCSV/" class="btn btn-primary">Download CSV</a> ';
 			echo '<br><br>';
 			if (isset($_POST['delete'])) {
 				if (empty($_POST['ids'])) {
